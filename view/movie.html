@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>List of movies</title>
+    <link href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" rel="stylesheet" />
+    <link rel="stylesheet" href="css/movie.css">
+    <script src="js/token_func.js"></script>
+</head>
+
+<body>
+    <nav class="navbar navbar-default">
+        <div class="container-fluid">
+            <ul class="nav navbar-nav">
+                <li><a href="../">Home</a></li>
+                <li class="active"><a href="#">Movies</a></li>
+                <li id="users"><a href="../view/users.html">Users</a ></li >
+            </ul>
+        </div>
+    </nav>
+    <h2>List of movies</h2>
+    <form name="movieForm" hidden>
+        <input type="hidden" name="id" value="0" />
+        <div class="form-group">
+            <label for="title">Title:</label>
+            <input class="form-control" name="title" required maxlength="50" />
+        </div>
+        <div class="form-group">
+            <label for="author">Author:</label>
+            <input class="form-control" name="author" required maxlength="50" />
+        </div>
+        <div class="form-group">
+            <label for="genre">Genre:</label>
+            <input class="form-control" name="genre" required maxlength="40" />
+        </div>
+        <div class="form-group">
+            <label for="description">Description:</label>
+            <textarea name="description" cols="2" rows="2" class="form-control" required maxlength="500"></textarea>
+        </div>
+        <div class="panel-body">
+            <button type="submit" class="btn btn-sm btn-primary">Save</button>
+        </div>
+    </form>
+    <div>
+        <label for="search">Title search</label>
+        <input type="text" name="search" oninput="searching(this.value)" />
+    </div>
+    <table class="table table-condensed table-striped table-bordered" id="myTable">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Author</th>
+                <th>Genre</th>
+                <th>Description</th>
+                <th id = "options">Options</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+
+    <script> 
+        GetMovies();
+                
+        const form = document.getElementsByName("movieForm");
+        const editLink = document.getElementsByName("editLink");
+        const removeLink = document.getElementsByName("removeLink");
+        const usersLink = document.getElementById("users");
+        const optionsLink = document.getElementById("options");
+        async function GetMovies() { 
+            await check()              
+            const response = await fetch("/movie/movies", {
+                method: "GET",
+                headers: { "Accept": "application/json", 
+                "Authorization":"Bearer "+ localStorage.getItem("accessToken") }
+            });
+            if (!localStorage.getItem("accessToken")) {
+                logoutBtn.remove();
+            }
+            if (response.ok === true && localStorage.getItem("accessToken")) {                
+                const movies = await response.json();
+                const user = await getUser()
+                if (user.roles[0] === "ADMIN") {                 
+                    document.forms["movieForm"].hidden = false                                                                               
+                }
+                if (user.roles[0] !== "ADMIN") {
+                    optionsLink.remove()
+                    try{users.remove() 
+                    }catch{}                                       
+                }
+                let rows = document.querySelector("tbody");
+                movies.forEach(movie => {                    
+                    rows.append(row(movie, user.roles[0]));
+                });
+            }
+        }
+
+        async function GetMovie(id) {
+            await check()  
+            const response = await fetch("/movie/" + id, {
+                method: "GET",
+                headers: { "Accept": "application/json", "Authorization":"Bearer "+ localStorage.getItem("accessToken") }
+            });
+            if (response.ok === true) {
+                const movie = await response.json();
+                const form = document.forms["movieForm"];
+                form.elements["id"].value = movie._id;
+                form.elements["title"].value = movie.title;
+                form.elements["author"].value = movie.author;
+                form.elements["genre"].value = movie.genre;
+                form.elements["description"].value = movie.description;
+            }
+        }
+        async function CreateMovie(movieName, movieAuthor, movieGenre, movieDescription) {
+            await check()  
+            const response = await fetch("/movie/", {
+                method: "POST",
+                headers: { "Accept": "application/json", "Content-Type": "application/json",
+                 "Authorization":"Bearer "+ localStorage.getItem("accessToken") },
+                body: JSON.stringify({
+                    _title: movieName,
+                    _author: movieAuthor,
+                    _genre: movieGenre,
+                    _description: movieDescription
+                })
+            });
+            if (response.ok === true) {
+                const movie = await response.json();
+                reset();   
+                const user = await getUser()           
+                document.querySelector("tbody").append(row(movie, user.roles[0]));
+            }
+        }
+
+        async function EditMovie(movieId, movieName, movieAuthor, movieGenre, movieDescription) {
+            await check()  
+            const response = await fetch("/movie", {
+                method: "PUT",
+                headers: { "Accept": "application/json", "Content-Type": "application/json", 
+                "Authorization":"Bearer "+ localStorage.getItem("accessToken") },
+                body: JSON.stringify({
+                    _id: movieId,
+                    _title: movieName,
+                    _author: movieAuthor,
+                    _genre: movieGenre,
+                    _description: movieDescription
+                })
+            });
+            if (response.ok === true) {
+                const movie = await response.json();
+                reset();
+                const user = await getUser()
+                document.querySelector("tr[data-rowid='" + movie._id + "']").replaceWith(row(movie, user.roles[0]));
+            }
+            else {
+                reset()
+            }
+        }
+
+        async function DeleteMovie(_id) {
+            await check()  
+            const response = await fetch("/movie/" + _id, {
+                method: "DELETE",
+                headers: { "Accept": "application/json",
+                 "Authorization":"Bearer "+ localStorage.getItem("accessToken") }
+            });
+            if (response.ok === true) {
+                const movie = await response.json();
+                document.querySelector("tr[data-rowid='" + movie._id + "']").remove();
+            }
+        }
+
+
+        function reset() {
+            const form = document.forms["movieForm"];
+            form.reset();
+            form.elements["id"].value = 0;
+        }
+
+
+        function row(movie, role) {  
+            const tr = document.createElement("tr");          
+            if (role){                
+                tr.setAttribute("data-rowid", movie._id);
+
+                const nameTd = document.createElement("td");
+                nameTd.append(movie.title);
+                tr.append(nameTd);
+
+                const authorTd = document.createElement("td");
+                authorTd.append(movie.author);
+                tr.append(authorTd);
+
+                const genreTd = document.createElement("td");
+                genreTd.append(movie.genre);
+                tr.append(genreTd);
+
+                const descriptionTd = document.createElement("td");
+                descriptionTd.append(movie.description);
+                tr.append(descriptionTd);
+
+                
+                             
+            }
+            if (role === "ADMIN"){
+                const linksTd = document.createElement("td");
+
+                const editLink = document.createElement("a");
+                editLink.setAttribute("data-id", movie._id);
+                editLink.setAttribute("style", "cursor:pointer;padding:15px;");
+                editLink.setAttribute("name", "editLink");
+                editLink.append("Change");
+                editLink.addEventListener("click", e => {
+                e.preventDefault();
+                GetMovie(movie._id)}); 
+
+                linksTd.append(editLink);
+
+                const removeLink = document.createElement("a");
+                removeLink.setAttribute("data-id", movie._id);
+                removeLink.setAttribute("style", "cursor:pointer;padding:15px;");
+                removeLink.setAttribute("name", "removeLink");
+                removeLink.append("Delete");
+                removeLink.addEventListener("click", e => {
+
+                e.preventDefault();
+                DeleteMovie(movie._id);
+                });
+                linksTd.append(removeLink);
+                tr.appendChild(linksTd);
+            }
+            return tr;
+        }
+
+
+
+        document.forms["movieForm"].addEventListener("submit", e => {
+            e.preventDefault();
+            const form = document.forms["movieForm"];
+            const id = form.elements["id"].value;
+            const title = form.elements["title"].value;
+            const author = form.elements["author"].value;
+            const genre = form.elements["genre"].value;
+            const description = form.elements["description"].value;
+            if (id == 0)
+                CreateMovie(title, author, genre, description);
+            else
+                EditMovie(id, title, author, genre, description);
+        });
+        
+
+
+        async function searching(value) {
+            await check()  
+            value = value.trim();
+            const response = await fetch("/movie/movies", {
+                method: "GET",
+                headers: { "Accept": "application/json", 
+                "Authorization": "Bearer " + localStorage.getItem("accessToken") }
+            });
+
+            if (response.ok === true) {
+                const movies = await response.json();
+                let rows = document.querySelector("tbody");
+                while (rows.firstChild) {
+                    rows.removeChild(rows.firstChild);
+                }
+                const user = await getUser()
+                movies.forEach(movie => {
+                    if (movie.title.toLowerCase().includes(value.toLowerCase())) {
+                        rows.append(row(movie, user.roles[0]));
+                    };
+                });
+                if (value == "") {
+
+                    while (rows.firstChild) {
+                        rows.removeChild(rows.firstChild);
+                    }
+                    await GetMovies();
+                }
+            }
+        }
+
+        async function getUser() {
+            await check()  
+            const response = await fetch("/token/user", {
+                method: "GET",
+                headers: { "Accept": "application/json", 
+                "Authorization": "Bearer " + localStorage.getItem("accessToken") }
+            });
+            if (response.ok === true && localStorage.getItem("accessToken")) {
+                const user = await response.json();
+                return user
+            }
+        }
+        
+    </script>
+</body>
+
+</html>
